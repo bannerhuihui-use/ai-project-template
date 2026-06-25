@@ -1,0 +1,76 @@
+# ===== 主配置：通用项 + 环境切换 =====
+# 敏感配置（账号密码、各类 Key）统一放在 .env，本文件通过 ${KEY} 引用。
+# 切换环境：修改 .env 中的 SPRING_PROFILES_ACTIVE，或启动参数 --spring.profiles.active=test
+
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: ${APP_NAME:template-server}
+  profiles:
+    # 默认本地环境
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+  # ===== 数据源（单库，当前 PostgreSQL）=====
+  # 连接值来自 .env；切换 MySQL/PostgreSQL 只需在此切换下面这段（两个驱动已都在 pom 中常驻）。
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${POSTGRES_DATABASE}?connectTimeout=10
+    username: ${POSTGRES_USERNAME}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: app-pool
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 10000
+    # 改用 MySQL：注释上面 PostgreSQL 那几行，启用下面这段
+    # url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:3306}/${MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT%2B8&useSSL=false&allowPublicKeyRetrieval=true&connectTimeout=10000&socketTimeout=30000
+    # username: ${MYSQL_USERNAME}
+    # password: ${MYSQL_PASSWORD}
+    # driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # ===== MongoDB / Redis =====
+  # 连接值来自 .env。本地无认证时把 username/password 留空即可。
+  data:
+    mongodb:
+      host: ${MONGODB_HOST:localhost}
+      port: ${MONGODB_PORT:27017}
+      database: ${MONGODB_DATABASE}
+      username: ${MONGODB_USERNAME}
+      password: ${MONGODB_PASSWORD}
+      authentication-database: ${MONGODB_AUTH_DB:admin}
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 3000ms
+
+  # ===== RabbitMQ =====
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+
+# ===== Actuator 健康检查 / 监控 =====
+# /actuator/health 会自动包含数据源(db)等组件状态；新项目接库后可直接访问验证连通。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always      # 显示 db/各组件明细（生产环境在 prod 配置中收紧）
+      show-components: always
+
+logging:
+  level:
+    root: INFO
+    com.example.template: DEBUG
