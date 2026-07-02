@@ -43,6 +43,13 @@ management:
       show-details: never
       show-components: never
 
+# 生产环境关闭 Swagger / OpenAPI，避免暴露接口结构与在线调试
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 logging:
   level:
     root: WARN

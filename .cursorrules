@@ -102,6 +102,61 @@ PageResult<T>
 
 ------------------------------------------------
 
+接口文档约定（Swagger / OpenAPI）：
+
+以后所有新增 Controller 接口都必须补充 Swagger/OpenAPI 注解。至少包括：
+
+1. Controller 类级别使用 @Tag 说明模块
+2. 接口方法使用 @Operation 说明接口用途
+3. 请求参数使用 @Parameter 或 @Schema 说明含义、是否必填、示例值
+4. 请求体 DTO 字段使用 @Schema 说明含义、示例值、校验规则
+5. 响应结果使用 @ApiResponse 说明成功和常见失败情况
+6. 涉及业务错误时说明错误码和错误含义
+7. 不允许只生成接口路径而缺少参数、响应、错误码说明
+
+目标：
+Swagger 页面必须能作为测试接口库、前后端协作文档、AI 理解接口语义的依据。
+
+Swagger UI：http://localhost:8080/swagger-ui.html
+OpenAPI JSON：http://localhost:8080/v3/api-docs
+
+------------------------------------------------
+
+日志规范：
+
+1. 禁止 System.out.println
+2. 禁止 e.printStackTrace()
+3. 必须使用 SLF4J Logger
+4. 异常日志必须带上下文（至少包含 traceId 与关键业务参数，禁止裸 log.error(e)）
+5. 关键业务流程使用 info
+6. 可预期 / 可恢复异常使用 warn
+7. 系统异常使用 error
+8. 禁止打印 password、token、authorization、secret、验证码、身份证、手机号等敏感信息
+9. 用户可控内容（如 Header、参数）写入日志前必须做换行清洗，防止日志注入
+10. 新增接口必须能通过 traceId（请求头 X-Trace-Id）串联整条请求日志
+
+日志能力已内置：logback-spring.xml + TraceIdFilter + AccessLogFilter，
+新增接口无需重复造轮子，直接复用 traceId 链路即可。
+
+------------------------------------------------
+
+鉴权规范（auth-core）：
+
+1. 需要登录的接口必须走 JWT（Authorization: Bearer xxx），不得自建鉴权
+2. 后台接口必须校验 ADMIN（user_type=ADMIN / ROLE_ADMIN）
+3. 小程序用户接口必须校验 MEMBER（user_type=MEMBER / ROLE_MEMBER）
+4. 禁止明文存储密码，必须使用 BCryptPasswordEncoder
+5. 禁止日志打印 token / password / session_key / openid 等敏感信息
+6. 新增登录方式必须落到 user_identity（USERNAME/PHONE/EMAIL/WECHAT_MINIAPP），
+   不允许新建一套用户体系；用户主体统一用 sys_user
+7. JWT payload 不得放密码、openid、session_key、手机号明文等敏感信息
+8. 受保护接口在 Swagger 上必须标注 @SecurityRequirement(name="bearerAuth")
+
+能力已内置：SecurityConfig + JwtAuthenticationFilter + JwtTokenProvider + CurrentUser，
+获取当前用户用 SecurityUtils.getCurrentUser()。
+
+------------------------------------------------
+
 优先输出：
 
 设计方案

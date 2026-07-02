@@ -1,33 +1,41 @@
 # 项目文档中心
 
-> 本目录是 **AI 协作初始化模板** 的文档骨架。基于本模板新建项目后，请按各子目录的 `README.md` 模板逐项填写。
+> 本仓库是 **AI 协作项目模板** 的文档索引。模板当前能力快照见 [`TEMPLATE.md`](./TEMPLATE.md)。
 
 ## 文档导航
 
 | 模块 | 说明 | 入口 |
 |------|------|------|
-| PRD | 产品需求、业务流程、页面原型 | [PRD/README.md](./PRD/README.md) |
-| API | 接口设计、接口规范、Swagger 导出 | [API/README.md](./API/README.md) |
-| DB | 数据库设计、表结构、索引、ER 图 | [DB/README.md](./DB/README.md) |
-| DEPLOY | 部署文档、服务器/Nginx/Docker 配置 | [DEPLOY/README.md](./DEPLOY/README.md) |
+| **模板总览** | 当前已落地能力、fork 指引 | [TEMPLATE.md](./TEMPLATE.md) |
+| PRD | 产品需求模板（新业务模块填写） | [PRD/README.md](./PRD/README.md) |
+| API | 接口规范与 RBAC 契约 | [API/README.md](./API/README.md) |
+| DB | 表结构、种子数据、Flyway | [DB/README.md](./DB/README.md) |
+| LOGGING | 日志与集中式 Mongo | [LOGGING/README.md](./LOGGING/README.md) |
+| DEPLOY | 部署文档模板 | [DEPLOY/README.md](./DEPLOY/README.md) |
+| UI | 后台设计参考 | [UI/stitch_standard_admin_framework/systematic_efficiency/DESIGN.md](./UI/stitch_standard_admin_framework/systematic_efficiency/DESIGN.md) |
+
+## 核心参考（已落地）
+
+| 主题 | 文档 |
+|------|------|
+| 数据库表结构 + 种子 | [DB/SCHEMA.md](./DB/SCHEMA.md) |
+| 全量建表 SQL | [DB/template-full.sql](./DB/template-full.sql) |
+| Flyway 迁移 | [DB/MIGRATIONS.md](./DB/MIGRATIONS.md) |
+| RBAC 接口契约 | [API/auth-v2.0-rbac.md](./API/auth-v2.0-rbac.md) |
+| 后端启动与鉴权 | [../server/README.md](../server/README.md) |
+| 后台前端 | [../web/admin/README.md](../web/admin/README.md) |
 
 ## 协作流程
 
-本项目遵循「先分析、再设计、最后编码」的协作约定（详见根目录 `.cursorrules`）：
+遵循「先分析、再设计、最后编码」（详见 `.cursorrules`）：
 
-1. **需求分析** → 填写 `PRD`
-2. **接口设计** → 填写 `API`
-3. **表设计** → 填写 `DB`
-4. **部署方案** → 填写 `DEPLOY`
-5. 确认设计后再进入编码
+1. 填写 `AI_CONTEXT.md` 与 `PRD`
+2. 设计 `DB` / `API`
+3. 确认后再编码
 
-## 技术栈速览
+## 技术栈
 
-- 后端：Java 17 / SpringBoot 3 / SpringCloud
-- 存储：MySQL / MongoDB / Redis
-- 消息：RabbitMQ
-- 详见根目录 `AI_CONTEXT.md`
-
----
-
-> 填写约定：模板中所有 `<...>` 与「待填写」均为占位符，正式编写时请替换或删除。
+- 后端：Java 17 / Spring Boot 3
+- 前端：React 18 + Ant Design 5（`web/admin`）
+- 存储：PostgreSQL（默认）/ Redis / MongoDB（可选）
+- 详见根目录 [`AI_CONTEXT.md`](../AI_CONTEXT.md)

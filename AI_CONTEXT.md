@@ -1,8 +1,6 @@
 # AI 协作上下文（AI_CONTEXT）
 
-> 用途：这是 AI 协作的「项目说明书」，每次让 AI 介入前，请先把本文件补充完整。
-> 它与根目录 `.cursorrules`（角色与编码规范）、`docs/`（PRD/API/DB/DEPLOY 文档）配合使用。
-> 模板中所有「待填写」「<...>」均为占位符，正式使用时请替换或删除。
+> fork 新项目时**首先填写**本文件。模板默认能力见 [`docs/TEMPLATE.md`](docs/TEMPLATE.md)。
 
 ---
 
@@ -20,85 +18,72 @@
 
 ## 3. 技术栈
 
-后端：
+**后端**
 
 - Java 17
-- SpringBoot 3
-- SpringCloud（如使用，否则删除）
+- Spring Boot 3
+- PostgreSQL（默认数据源）
+- Redis（JWT 黑名单）
+- MongoDB（集中式日志，可选）
 
-数据库：
+**前端**
 
-- MySQL
-- MongoDB（如使用，否则删除）
+- React 18 + TypeScript + Vite
+- Ant Design 5（`web/admin`）
 
-缓存：
+**其他**（按需删除）
 
-- Redis
-
-MQ：
-
-- RabbitMQ（如使用，否则删除）
-
----
-
-## 4. 前端
-
-`<待填写>`
-
-例如：
-
-- Vue3
-- UniApp
-- 微信小程序
+- RabbitMQ
+- 阿里云 OSS（file-core）
 
 ---
 
-## 5. 模块
+## 4. 模块
 
-> 列出本项目的业务模块，每个模块对应一套 PRD/API/DB 设计（详见 `docs/`）。
+模板已内置（一般无需重写 PRD）：
 
-`<待填写>`
+| 模块 | 说明 | 文档 |
+|------|------|------|
+| auth-core | JWT + RBAC + 用户管理 | [server/README.md](server/README.md) |
+| config-core | 系统配置 | [docs/DB/SCHEMA.md](docs/DB/SCHEMA.md) |
+| file-core | 文件上传 local/oss | [server/README.md](server/README.md) |
+| web/admin | 通用后台壳 | [web/admin/README.md](web/admin/README.md) |
 
-例如：
+**新增业务模块**（在此列出）：
 
-- user-center（用户中心）
-- payment-center（支付中心）
-- game-center（游戏中心）
-
----
-
-## 6. 核心业务流程
-
-`<用 3-5 句话或流程描述项目最核心的业务链路，帮助 AI 快速建立全局认知>`
+- `<module-a>` — `<说明>`
 
 ---
 
-## 7. AI 协作要求
+## 5. 核心业务流程
 
-- 优先分析需求
-- 优先输出设计方案
-- 确认后再生成代码
-- 新增模块按 `.cursorrules` 流程：需求分析 → 模块设计 → 表设计 → API 设计 → 风险分析 → 确认 → 编码
+`<用 3-5 句话描述项目核心业务链路>`
 
 ---
 
-## 8. 编码规范（要点）
+## 6. AI 协作要求
 
-- 统一返回：`Result<T>`；分页：`PageResult<T>`
-- 统一异常处理、统一日志规范
-- 禁止硬编码、禁止 `System.out.println`
-- Controller 只做参数接收与校验，业务逻辑在 Service，数据访问在 Repository
-- 遵循 SOLID、高内聚低耦合
-- 详细规范见根目录 `.cursorrules`
+- 优先分析需求 → 输出设计方案 → 确认后再编码
+- 新增模块：PRD → DB → API → 风险分析 → 确认 → 编码
+- 规范见 `.cursorrules`
 
 ---
 
-## 9. 相关文档
+## 7. 编码规范要点
+
+- 统一返回 `Result<T>` / `PageResult<T>`
+- Controller 只做参数校验；Service 业务；Repository 数据访问
+- 禁止硬编码、`System.out.println`
+- 鉴权走 JWT + `@PreAuthorize`，详见 `.cursorrules`
+
+---
+
+## 8. 相关文档
 
 | 文档 | 说明 |
 |------|------|
-| [docs/README.md](./docs/README.md) | 文档总索引 |
-| [docs/PRD](./docs/PRD/README.md) | 产品需求 |
-| [docs/API](./docs/API/README.md) | 接口设计 |
-| [docs/DB](./docs/DB/README.md) | 数据库设计 |
-| [docs/DEPLOY](./docs/DEPLOY/README.md) | 部署文档 |
+| [docs/TEMPLATE.md](docs/TEMPLATE.md) | 模板当前能力 |
+| [docs/DB/SCHEMA.md](docs/DB/SCHEMA.md) | 表结构与种子 |
+| [docs/DB/template-full.sql](docs/DB/template-full.sql) | 全量 SQL |
+| [docs/API/auth-v2.0-rbac.md](docs/API/auth-v2.0-rbac.md) | RBAC 接口契约 |
+| [docs/README.md](docs/README.md) | 文档索引 |

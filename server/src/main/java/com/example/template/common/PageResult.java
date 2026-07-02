@@ -1,5 +1,7 @@
 package com.example.template.common;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
@@ -9,11 +11,19 @@ import java.util.List;
  *
  * @param <T> 列表元素类型
  */
+@Schema(name = "PageResult", description = "统一分页返回结构")
 public class PageResult<T> implements Serializable {
 
+    @Schema(description = "总记录数", example = "100", requiredMode = Schema.RequiredMode.REQUIRED)
     private long total;
+
+    @Schema(description = "当前页码，从 1 开始", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
     private long pageNum;
+
+    @Schema(description = "每页条数", example = "10", requiredMode = Schema.RequiredMode.REQUIRED)
     private long pageSize;
+
+    @Schema(description = "当前页数据列表")
     private List<T> list;
 
     public PageResult() {

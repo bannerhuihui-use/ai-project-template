@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  统一日志配置。
+  - 控制台 + app.log（全量）+ error.log（仅 ERROR）
+  - 按天 + 单文件 100MB 滚动，保留 30 天，总量上限兜底
+  - 日志目录从配置读取（logging.file.path / LOG_DIR），默认 logs
+  - 格式含：时间、级别、应用名、环境、traceId、线程、logger、message、异常堆栈
+  - %replace(...){'[\r\n]+', ' '} 对 message 做换行清洗，防止日志注入伪造行
+-->
+<configuration scan="true" scanPeriod="60 seconds">
+
+    <!-- 引入 Spring Boot 默认配置：注册 %wEx/%wex/%clr 等转换词（本文件 LOG_PATTERN 用到 %wEx），
+         仅注册转换规则与少量基础属性，不会覆盖下方自定义的 appender 与 pattern。 -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- 从 Spring 环境读取应用名、环境、日志目录，避免硬编码 -->
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="template-server"/>
+    <springProperty scope="context" name="APP_PROFILE" source="spring.profiles.active" defaultValue="default"/>
+    <springProperty scope="context" name="LOG_DIR" source="logging.file.path" defaultValue="logs"/>
+
+    <!-- 中央日志库（MongoDB）配置：默认关闭，配置开启。连接串放 .env 的 LOG_MONGO_URI。 -->
+    <springProperty scope="context" name="MONGO_LOG_ENABLED"    source="logging.mongo.enabled"    defaultValue="false"/>
+    <springProperty scope="context" name="MONGO_LOG_URI"        source="logging.mongo.uri"        defaultValue=""/>
+    <springProperty scope="context" name="MONGO_LOG_DB"         source="logging.mongo.database"   defaultValue="central_logs"/>
+    <springProperty scope="context" name="MONGO_LOG_COLLECTION" source="logging.mongo.collection" defaultValue="app_logs"/>
+    <springProperty scope="context" name="MONGO_LOG_TTL_DAYS"   source="logging.mongo.ttl-days"   defaultValue="30"/>
+    <springProperty scope="context" name="MONGO_LOG_QUEUE_SIZE" source="logging.mongo.queue-size" defaultValue="2048"/>
+
+    <property name="MAX_FILE_SIZE" value="100MB"/>
+    <property name="MAX_HISTORY" value="30"/>
+    <property name="TOTAL_SIZE_CAP" value="20GB"/>
+
+    <!-- traceId 在过滤器中已做白名单校验，message 这里再做换行清洗，双重防注入 -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [${APP_NAME}] [${APP_PROFILE}] [%X{traceId:--}] [%thread] %logger{40} - %replace(%msg){'[\r\n]+', ' '}%n%wEx"/>
+
+    <!-- ===== 控制台 ===== -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===== 普通日志 app.log（全量，按级别阈值 INFO 起记，DEBUG 可调整 root）===== -->
+    <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app.log</file>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/app.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ===== 错误日志 error.log（仅 ERROR）===== -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/error.log</file>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ===== 中央日志库 MongoDB（默认关闭；仅 WARN+ERROR 入库）===== -->
+    <!-- enabled=false 时 inert：不连库、不写入，对业务无影响。 -->
+    <appender name="MONGO" class="com.example.template.common.logging.MongoLogAppender">
+        <enabled>${MONGO_LOG_ENABLED}</enabled>
+        <uri>${MONGO_LOG_URI}</uri>
+        <database>${MONGO_LOG_DB}</database>
+        <collection>${MONGO_LOG_COLLECTION}</collection>
+        <ttlDays>${MONGO_LOG_TTL_DAYS}</ttlDays>
+        <service>${APP_NAME}</service>
+        <env>${APP_PROFILE}</env>
+    </appender>
+
+    <!-- 异步包裹：neverBlock 队列满即丢弃，绝不阻塞业务线程；仅 WARN+ERROR 进入队列。 -->
+    <appender name="MONGO_ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+        <neverBlock>true</neverBlock>
+        <discardingThreshold>0</discardingThreshold>
+        <queueSize>${MONGO_LOG_QUEUE_SIZE}</queueSize>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>WARN</level>
+        </filter>
+        <appender-ref ref="MONGO"/>
+    </appender>
+
+    <!-- 业务包日志级别（开发更详细，生产可在 prod profile 收紧为 INFO）-->
+    <logger name="com.example.template" level="DEBUG"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="APP_FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+        <appender-ref ref="MONGO_ASYNC"/>
+    </root>
+
+</configuration>

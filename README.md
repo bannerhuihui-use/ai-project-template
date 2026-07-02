@@ -1,94 +1,91 @@
 # AI 项目初始化模板
 
-一个面向 **Java 17 + SpringBoot 3** 的项目初始化模板，内置 AI 协作规范与标准文档骨架，帮助你以「先分析、再设计、最后编码」的方式快速启动新项目。
+面向 **Java 17 + Spring Boot 3 + React 后台** 的可复用项目模板，内置鉴权/RBAC、系统配置、文件上传、通用 Admin 前端与 AI 协作规范。
+
+> **当前能力快照**：[`docs/TEMPLATE.md`](docs/TEMPLATE.md)
 
 ## 模板包含什么
 
 | 文件 / 目录 | 作用 |
 |------|------|
-| `.cursorrules` | AI 角色定位与编码规范（架构分层、SOLID、返回规范等） |
-| `AI_CONTEXT.md` | 项目说明书：项目名称、技术栈、模块、核心流程，AI 介入前必读 |
-| `docs/README.md` | 文档总索引 |
-| `docs/PRD/` | 产品需求文档模板 |
-| `docs/API/` | 接口设计文档模板 |
-| `docs/DB/` | 数据库设计文档模板 |
-| `docs/DEPLOY/` | 部署文档模板 |
-| `server/` | 后端工程：SpringBoot3 + Maven 初始项目，开箱即跑 |
-| `.gitignore` | 常用忽略规则（含 `.env`、`target`、`logs` 等） |
+| `.cursorrules` | AI 编码规范（分层、日志、鉴权、Swagger） |
+| `AI_CONTEXT.md` | 新项目说明书（fork 后首先填写） |
+| `docs/TEMPLATE.md` | 模板当前已落地能力总览 |
+| `docs/DB/SCHEMA.md` | 数据库表结构与种子数据说明 |
+| `docs/DB/template-full.sql` | 全量建表 + 种子 SQL |
+| `server/` | Spring Boot 后端（auth / config / file） |
+| `web/admin/` | React + Ant Design 通用后台 |
+| `.gitignore` | 常用忽略规则 |
 
-## 后端工程（server/）
+## 快速启动
 
-- 默认启用 `web` + `validation` + `actuator`，自带统一返回 `Result<T>` / `PageResult<T>` 与全局异常处理。
-- 配置集中在 `server/.env`（账号密码、各类 Key），yml 通过 `${KEY}` 引用，三环境 `local`/`test`/`prod`，默认 `local`。
-  - 注意：`.env` 中含 `#` 等特殊字符的值必须用**双引号**包裹（单引号不会被剥离）。
-- 已接入并验证：**MySQL / PostgreSQL（可切换的单数据源）、MongoDB、Redis、RabbitMQ**；其健康状态统一在 `GET /actuator/health` 查看。
-- OSS / 火山方舟大模型 / 短信 在 `pom.xml` 与配置中仍为注释，用到时取消注释并在 `.env` 填值即可。
-- 启动：`cd server && mvn spring-boot:run`，验证接口 `GET /api/v1/hello`、`GET /api/v1/health`、`GET /actuator/health`。
+### 后端
 
-### 代码分层
-
-遵循 `.cursorrules` 的职责划分：Controller 只做参数接收/校验，业务逻辑在 Service，数据访问在 Repository。
-
-```
-com.example.template
-├── TemplateApplication.java        # 启动类
-├── common/                         # 通用：Result / PageResult / ResultCode / 异常 / 全局异常处理
-├── config/                         # 配置类（按需）
-├── controller/                     # 控制层：HelloController
-├── service/                        # 业务层接口：HelloService
-│   └── impl/                       # 业务层实现：HelloServiceImpl（@Service）
-└── repository/                     # 数据访问层（按需新增）
+```bash
+cd server
+cp .env.example .env   # 配置 PostgreSQL、JWT_SECRET、Redis 等
+mvn spring-boot:run    # Flyway 自动建表 V1~V8
 ```
 
-新增模块时按 `Controller → Service(接口) → ServiceImpl(实现) → Repository` 分层落地。
+- Swagger：http://localhost:8080/swagger-ui.html
+- 默认管理员：`admin` / `123456`
 
-## 如何基于本模板初始化新项目
+### 前端
 
-1. **克隆 / 复制本模板**，重命名为你的项目目录，并重置 git 历史。
-2. **填写 `AI_CONTEXT.md`**：项目名称、简介、技术栈、模块、核心业务流程。
-3. **按业务模块补全 `docs/`**：
-   - `PRD` → 需求分析
-   - `DB` → 表设计
-   - `API` → 接口设计
-   - `DEPLOY` → 部署方案
-4. **确认设计后再进入编码**（遵循 `.cursorrules` 的协作流程）。
+```bash
+cd web/admin
+npm install
+npm run dev            # 自动加载 .env.development
+npm run build          # 自动加载 .env.production
+```
 
-## 初始化新项目时需要改的名字
+## 后端能力概览
 
-模板里的 `TemplateApplication` / `com.example.template` 等只是占位标识，新项目请按下表统一替换（以示例项目 `game-online` 为例）。改包名建议用 IDE 的 `Refactor → Rename`，会自动同步所有引用：
+- **auth-core**：JWT 双令牌、Redis 黑名单、RBAC、动态菜单、用户管理
+- **config-core**：系统键值配置（站点名、Logo 等）
+- **file-core**：本地 / 阿里云 OSS 上传，公开/私有访问
+- **日志**：traceId 链路、可选 Mongo 集中式审计
+
+详见 [`server/README.md`](server/README.md)。
+
+## 如何 fork 新项目
+
+1. 复制仓库，重置 git，填写 [`AI_CONTEXT.md`](AI_CONTEXT.md)
+2. 全局替换包名/项目名（见下表）
+3. 修改 `server/.env`（各环境一份）；前端改 `.env.development` / `.env.production` 或 `.env.local`
+4. 启动验证后，按业务增量扩展菜单/权限/页面
 
 | 位置 | 模板默认 | 改成（示例） |
 |------|----------|--------------|
-| 启动类 | `TemplateApplication` | `GameOnlineApplication` |
-| 包名 + 目录 | `com.example.template` | `com.yourcompany.gameonline` |
-| `pom.xml` `groupId` | `com.example` | `com.yourcompany` |
-| `pom.xml` `artifactId` | `template-server` | `game-online-server` |
-| `pom.xml` `name` / `description` | template-server | 你的项目名 |
-| `.env` / `.env.example` `APP_NAME` | `template-server` | `game-online-server` |
-| `application.yml` 日志包名 `logging.level.com.example.template` | 旧包 | 新包 |
-
-> 说明：启动类改名只需同步 `main` 里的 `SpringApplication.run(XxxApplication.class, args)`；类名不影响组件扫描——`@SpringBootApplication` 扫描的是启动类所在包及其子包，只要业务代码在该包下即可。
+| 包名 | `com.example.template` | `com.yourcompany.myapp` |
+| artifactId | `template-server` | `myapp-server` |
+| 启动类 | `TemplateApplication` | `MyappApplication` |
 
 ## 协作流程
 
 ```mermaid
 flowchart LR
-    A[填写 AI_CONTEXT] --> B[PRD 需求分析]
+    A[填写 AI_CONTEXT] --> B[PRD 需求]
     B --> C[DB 表设计]
-    C --> D[API 接口设计]
-    D --> E[DEPLOY 部署方案]
-    E --> F{设计确认}
-    F -->|通过| G[编码实现]
-    F -->|不通过| B
+    C --> D[API 接口]
+    D --> E{确认}
+    E -->|通过| F[编码]
 ```
 
-新增模块时，AI 会先输出：需求分析 → 模块设计 → 表设计 → API 设计 → 风险分析，**确认后再编码**。
+新增模块时遵循 `.cursorrules`：需求 → 设计 → 确认 → 编码。
+
+## 文档索引
+
+| 文档 | 说明 |
+|------|------|
+| [docs/README.md](docs/README.md) | 文档中心 |
+| [docs/TEMPLATE.md](docs/TEMPLATE.md) | 模板能力快照 |
+| [docs/DB/SCHEMA.md](docs/DB/SCHEMA.md) | 表结构 + 种子 |
+| [docs/API/auth-v2.0-rbac.md](docs/API/auth-v2.0-rbac.md) | RBAC 接口契约 |
+| [web/admin/README.md](web/admin/README.md) | 前端说明 |
 
 ## 技术栈
 
-- 后端：Java 17 / SpringBoot 3 / SpringCloud（可选）
-- 存储：MySQL / MongoDB（可选） / Redis
-- 消息：RabbitMQ（可选）
+- 后端：Java 17 / Spring Boot 3 / PostgreSQL / Redis / MongoDB（可选）
+- 前端：React 18 / TypeScript / Vite / Ant Design 5
 - 返回规范：`Result<T>` / `PageResult<T>`
-
-> 占位说明：模板中所有「待填写」「<...>」均为占位符，正式使用时请替换或删除。

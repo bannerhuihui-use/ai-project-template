@@ -1,75 +1,53 @@
 # DB 数据库设计文档
 
-> 用途：记录数据库选型、表结构、索引与 ER 关系，作为编码前的表设计依据。
+> 记录数据库选型、表结构、索引与种子数据。模板当前快照以 [`SCHEMA.md`](./SCHEMA.md) 为准。
 
-## 1. 存储选型
+## 1. 存储选型（模板默认）
 
 | 存储 | 用途 | 说明 |
 |------|------|------|
-| MySQL | 核心业务数据 | `<事务型数据>` |
-| MongoDB | 非结构化 / 日志 | `<如行为日志、文档>` |
-| Redis | 缓存 / 分布式锁 | `<缓存 key 规范见下>` |
+| PostgreSQL | 核心业务 | 鉴权、配置、文件元数据等 |
+| MongoDB | 集中式日志（可选） | WARN+ERROR 审计查询 |
+| Redis | 缓存 / JWT 黑名单 | 鉴权 fail-closed 依赖 |
 
 ## 2. 设计规范
 
-- 表名：小写下划线，统一前缀，如 `t_user`
-- 主键：`id` BIGINT 自增 或 雪花 ID
-- 公共字段：`created_at` / `updated_at` / `is_deleted`（逻辑删除）
-- 字符集：`utf8mb4`
-- 禁止：物理外键（用应用层维护关系）
+- 表名：小写下划线，如 `sys_user`
+- 主键：`bigserial`
+- 公共字段：`created_at` / `updated_at` / `deleted`（逻辑删除）
+- 禁止物理外键（应用层维护关系）
+- 唯一索引带 `WHERE deleted = 0`
 
-## 3. ER 图
+## 3. 当前表结构
 
-```mermaid
-erDiagram
-    USER ||--o{ ORDER : places
-    USER {
-      bigint id PK
-      varchar username
-    }
-    ORDER {
-      bigint id PK
-      bigint user_id FK
-    }
+完整说明见 **[`SCHEMA.md`](./SCHEMA.md)**，包含 9 张表字段、索引、种子数据汇总。
+
+## 4. SQL 与迁移
+
+| 文件 | 用途 |
+|------|------|
+| [`template-full.sql`](./template-full.sql) | 全量 DDL + 种子（V1~V8 合并，幂等） |
+| [`MIGRATIONS.md`](./MIGRATIONS.md) | Flyway 版本说明与 baseline 方案 |
+| `server/src/main/resources/db/migration/V*.sql` | 应用启动自动执行的增量脚本 |
+
+**推荐**：新环境配置 `.env` 后 `mvn spring-boot:run`，由 Flyway 自动迁移。
+
+**手动**（空库）：
+
+```bash
+psql -h HOST -U USER -d DBNAME -f docs/DB/template-full.sql
 ```
 
-## 4. 表结构（按此模板逐表填写）
+## 5. ER 图
 
-### 表：`t_<table_name>`
+见 [`SCHEMA.md`](./SCHEMA.md) 第 1 节 Mermaid 图。
 
-> 说明：`<这张表存什么>`
+## 6. Redis Key 规范（鉴权）
 
-| 字段 | 类型 | 允许空 | 默认值 | 说明 |
-|------|------|--------|--------|------|
-| id | BIGINT | 否 | - | 主键 |
-| `<field>` | VARCHAR(64) | 否 | '' | `<说明>` |
-| created_at | DATETIME | 否 | CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | DATETIME | 否 | CURRENT_TIMESTAMP | 更新时间 |
-| is_deleted | TINYINT | 否 | 0 | 逻辑删除 0/1 |
+| 业务 | Key 模式 | TTL | 说明 |
+|------|----------|-----|------|
+| JWT 黑名单 | `auth:token:blacklist:{jti}` | 令牌剩余有效期 | logout / refresh 轮换 |
 
-**索引**
+## 7. 新业务模块
 
-| 索引名 | 类型 | 字段 | 说明 |
-|--------|------|------|------|
-| PRIMARY | 主键 | id | - |
-| `idx_<field>` | 普通 | `<field>` | `<查询场景>` |
-
-**建表 DDL（示例）**
-
-```sql
-CREATE TABLE `t_<table_name>` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `<field>` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '<说明>',
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `is_deleted` TINYINT NOT NULL DEFAULT 0,
-  PRIMARY KEY (`id`),
-  KEY `idx_<field>` (`<field>`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='<表说明>';
-```
-
-## 5. Redis Key 规范
-
-| 业务 | Key 模式 | 类型 | TTL | 说明 |
-|------|----------|------|-----|------|
-| `<业务>` | `<project>:<module>:<key>` | String | `<如 1800s>` | `<说明>` |
+新增业务表时，在本目录补充表说明，并新增 Flyway `V9__xxx.sql`（勿直接改历史版本）。

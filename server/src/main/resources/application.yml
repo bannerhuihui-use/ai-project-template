@@ -15,6 +15,11 @@ spring:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
 
+  servlet:
+    multipart:
+      max-file-size: ${FILE_MAX_UPLOAD_SIZE:25MB}
+      max-request-size: ${FILE_MAX_REQUEST_SIZE:30MB}
+
   # ===== 数据源（单库，当前 PostgreSQL）=====
   # 连接值来自 .env；切换 MySQL/PostgreSQL 只需在此切换下面这段（两个驱动已都在 pom 中常驻）。
   datasource:
@@ -32,6 +37,15 @@ spring:
     # username: ${MYSQL_USERNAME}
     # password: ${MYSQL_PASSWORD}
     # driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # ===== 数据库版本迁移（Flyway）=====
+  # 新环境启动时自动执行 classpath:db/migration 下脚本。
+  # 若库已手动执行过旧版 SQL，见 docs/DB/MIGRATIONS.md 做 baseline，避免重复建表。
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
 
   # ===== MongoDB / Redis =====
   # 连接值来自 .env。本地无认证时把 username/password 留空即可。
@@ -58,6 +72,35 @@ spring:
     password: ${RABBITMQ_PASSWORD:guest}
     virtual-host: ${RABBITMQ_VHOST:/}
 
+# ===== 鉴权 / JWT =====
+# 生产环境 JWT_SECRET 必须从 .env 或环境变量注入，禁止使用默认值（prod 启动会强制校验）。
+# access token 短有效期（默认 2h）用于访问接口；refresh token 长有效期（默认 7d）只用于刷新。
+auth:
+  jwt:
+    secret: ${JWT_SECRET:please-change-this-secret-please-change-this-secret}
+    access-expire-seconds: ${JWT_ACCESS_EXPIRE_SECONDS:7200}
+    refresh-expire-seconds: ${JWT_REFRESH_EXPIRE_SECONDS:604800}
+    issuer: ${JWT_ISSUER:template-server}
+  token:
+    # Redis key 前缀；黑名单 key 形如 {prefix}:blacklist:{jti}
+    redis-prefix: ${AUTH_TOKEN_REDIS_PREFIX:auth:token}
+    # 是否启用 Redis 黑名单。关闭后 logout 回退为 token_version 自增（整账号失效）。
+    # 鉴权时若启用且 Redis 异常 -> fail-closed（拒绝访问，返回 503），详见 README。
+    enable-blacklist: ${AUTH_TOKEN_ENABLE_BLACKLIST:true}
+  whitelist:
+    paths:
+      - /api/v1/auth/admin/login
+      - /api/v1/auth/wechat/login
+      - /api/v1/auth/token/refresh
+      - /api/v1/hello
+      - /api/v1/health
+      - /api/v1/public/**
+      - /swagger-ui.html
+      - /swagger-ui/**
+      - /v3/api-docs
+      - /v3/api-docs/**
+      - /actuator/health
+
 # ===== Actuator 健康检查 / 监控 =====
 # /actuator/health 会自动包含数据源(db)等组件状态；新项目接库后可直接访问验证连通。
 management:
@@ -70,7 +113,63 @@ management:
       show-details: always      # 显示 db/各组件明细（生产环境在 prod 配置中收紧）
       show-components: always
 
+# ===== OpenAPI / Swagger 文档 =====
+# 文档元信息（标题、版本、server、tag）在 OpenApiConfig 中声明，这里只配置路径与 UI 行为。
+# 生产环境建议关闭或加鉴权：把 api-docs.enabled / swagger-ui.enabled 设为 false（见 README）。
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs            # OpenAPI JSON；YAML 为 /v3/api-docs.yaml
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html        # Swagger UI 访问入口
+    try-it-out-enabled: true      # 默认展开 "Try it out"，可直接在线调试
+    filter: true                  # 顶部接口过滤搜索框
+    display-request-duration: true # 显示请求耗时
+    tags-sorter: alpha            # tag 按字母排序
+    operations-sorter: alpha      # 接口按字母排序
+
+# ===== 文件上传（file-core）=====
+# storage-type: local（本地磁盘）| oss（阿里云 OSS，需在 .env 配置 OSS_*）
+file:
+  storage-type: ${FILE_STORAGE_TYPE:local}
+  local:
+    base-dir: ${FILE_LOCAL_DIR:./data/uploads}
+    public-base-url: ${FILE_PUBLIC_BASE_URL:http://localhost:8080/api/v1/public/files}
+  upload:
+    max-size-bytes:
+      avatar: ${FILE_MAX_SIZE_AVATAR:2097152}
+      image: ${FILE_MAX_SIZE_IMAGE:5242880}
+      document: ${FILE_MAX_SIZE_DOCUMENT:10485760}
+      attachment: ${FILE_MAX_SIZE_ATTACHMENT:20971520}
+    allowed-content-types:
+      avatar: image/jpeg,image/png,image/gif,image/webp
+      image: image/jpeg,image/png,image/gif,image/webp
+      document: application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      attachment: application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,application/x-zip-compressed,text/plain
+  oss:
+    endpoint: ${OSS_ENDPOINT:}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    bucket: ${OSS_BUCKET:}
+    public-base-url: ${OSS_PUBLIC_BASE_URL:}
+
+# ===== 日志 =====
+# 具体 appender / 滚动策略见 logback-spring.xml；这里只配置日志目录与级别。
+# 日志目录默认 logs，可通过 .env 的 LOG_DIR 覆盖；应用名复用 spring.application.name。
 logging:
+  file:
+    path: ${LOG_DIR:logs}
   level:
     root: INFO
     com.example.template: DEBUG
+  # ===== 集中式日志（中央 MongoDB）=====
+  # 默认关闭；仅 WARN+ERROR 入库，按 service 区分项目，TTL 自动过期。详见 docs/logging/README.md。
+  # 开启需在 .env 配置独立中央库连接串 LOG_MONGO_URI（不要复用业务库）。
+  mongo:
+    enabled: ${LOG_MONGO_ENABLED:false}
+    uri: ${LOG_MONGO_URI:}
+    database: ${LOG_MONGO_DB:central_logs}
+    collection: ${LOG_MONGO_COLLECTION:app_logs}
+    ttl-days: ${LOG_MONGO_TTL_DAYS:30}
+    queue-size: ${LOG_MONGO_QUEUE_SIZE:2048}

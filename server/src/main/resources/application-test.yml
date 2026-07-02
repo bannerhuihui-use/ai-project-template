@@ -4,6 +4,9 @@
 # 关系型数据库（单数据源）配置已统一在 application.yml，值来自 .env。
 
 spring:
+  flyway:
+    enabled: false
+
   # ---- 邮箱 ----
   # mail:
   #   host: ${MAIL_HOST}

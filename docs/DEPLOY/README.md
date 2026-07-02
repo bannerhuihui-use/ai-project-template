@@ -41,18 +41,35 @@ flowchart LR
 | `MYSQL_URL` | 数据库连接 | `jdbc:mysql://...` |
 | `REDIS_HOST` | Redis 地址 | `127.0.0.1` |
 
-## 5. Nginx 配置（示例）
+## 5. 前端构建与 Nginx
+
+Admin 前端（`web/admin`）生产构建会自动加载 `.env.production`（默认 `VITE_API_BASE_URL=/api`），**无需改 .env 再 build**：
+
+```bash
+cd web/admin
+npm ci
+npm run build    # 产物 → dist/
+```
+
+Nginx 同时托管静态资源并反代 API（与前端 `/api` 同源）：
 
 ```nginx
 server {
     listen 80;
     server_name <your-domain>;
 
+    root /var/www/admin/dist;
+    index index.html;
+
     location /api/ {
-        proxy_pass http://127.0.0.1:8080/;
+        proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
     }
 }
 ```
