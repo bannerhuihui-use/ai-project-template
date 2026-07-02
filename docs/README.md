@@ -12,6 +12,7 @@
 | DB | 表结构、种子数据、Flyway | [DB/README.md](./DB/README.md) |
 | LOGGING | 日志与集中式 Mongo | [LOGGING/README.md](./LOGGING/README.md) |
 | DEPLOY | 部署文档模板 | [DEPLOY/README.md](./DEPLOY/README.md) |
+| DEPLOY | 本地多项目环境隔离 | [DEPLOY/local-env-isolation.md](./DEPLOY/local-env-isolation.md) |
 | UI | 后台设计参考 | [UI/stitch_standard_admin_framework/systematic_efficiency/DESIGN.md](./UI/stitch_standard_admin_framework/systematic_efficiency/DESIGN.md) |
 
 ## 核心参考（已落地）

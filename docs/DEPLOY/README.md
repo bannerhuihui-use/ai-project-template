@@ -76,6 +76,9 @@ server {
 
 ## 6. Docker 部署
 
+> **本地多项目隔离**（PostgreSQL / Redis / MongoDB / RabbitMQ 分项目配置 + Docker 命令）：  
+> 见 [local-env-isolation.md](./local-env-isolation.md)
+
 ### Dockerfile（示例）
 
 ```dockerfile
