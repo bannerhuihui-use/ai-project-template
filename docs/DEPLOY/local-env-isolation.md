@@ -1,433 +1,177 @@
-# 本地多项目完全隔离指南
+# 新项目本地环境隔离（精简）
 
-> 从 `ai-project-template` 初始化新项目（如 `ander`、`like-weixin`）后，**不要直接复制 template 的 `.env` 就启动**。  
-> 多个 Spring Boot 项目若共用同一 PostgreSQL 库、同一 Redis DB、同一 JWT Secret，会导致：
->
-> - **Flyway 校验失败**（迁移脚本 checksum 与 `flyway_schema_history` 不一致）
-> - **Token / 黑名单串项目**（Redis key 前缀相同）
-> - **端口冲突**（两个服务都占 8080）
->
-> 本文说明：**每个项目应改哪些 `.env` 项**，以及如何用 **Docker** 搭建/隔离本地中间件。
+从模板初始化新项目后，在 `server/.env` 里改几项即可。**不要和 template 共用同一个 PostgreSQL 库名**，否则会 Flyway 冲突。
 
 ---
 
-## 1. 隔离原则（必改 vs 建议改）
+## 1. 新项目要改什么
 
-| 类别 | 配置项 | 是否必改 | 说明 |
-|------|--------|----------|------|
-| 应用 | `SERVER_PORT` | ✅ 必改 | 每项目不同端口，如 template=8080、ander=8081 |
-| 应用 | `APP_NAME` | ✅ 必改 | 日志、Actuator、中央日志 `service` 字段区分 |
-| PostgreSQL | `POSTGRES_DATABASE` | ✅ 必改 | **一项目一库**；共用库会 Flyway 冲突 |
-| PostgreSQL | `POSTGRES_USERNAME/PASSWORD` | 建议 | 可共用实例，也可每库独立用户 |
-| Redis | `REDIS_DATABASE` | ✅ 必改 | 0~15，每项目不同 index |
-| Redis | `AUTH_TOKEN_REDIS_PREFIX` | 建议 | 默认 `auth:token`，多项目建议加项目前缀 |
-| JWT | `JWT_SECRET` | ✅ 必改 | 每项目独立密钥，禁止用模板默认值 |
-| JWT | `JWT_ISSUER` | 建议 | 与 `APP_NAME` 一致即可 |
-| MongoDB 业务 | `MONGODB_DATABASE` | ✅ 必改 | 业务库名独立，如 `template_db`、`ander_db` |
-| MongoDB 日志 | `LOG_MONGO_DB` | 建议 | 中央日志库可共用实例，库名按项目区分 |
-| RabbitMQ | `RABBITMQ_VHOST` | 建议 | 完全隔离时为每项目建独立 vhost |
-| 文件本地存储 | `FILE_LOCAL_DIR` | 建议 | 本地模式时目录按项目分开 |
-| OSS | `OSS_BUCKET` 或路径前缀 | 建议 | 生产/联调时避免多项目写同一 bucket 根目录 |
+| 中间件 | 要不要手动建 | 新项目做什么 |
+|--------|--------------|--------------|
+| **PostgreSQL** | 要建 **库**（用户可共用） | `.env` 改 `POSTGRES_DATABASE`；**表由 Flyway 启动时自动建** |
+| **MongoDB** | **不用建** | `.env` 改 `MONGODB_DATABASE`；**库在首次写入时自动创建** |
+| **Redis** | **不用建** | `.env` 改 `REDIS_DATABASE`（0、1、2… 每个项目用一个） |
 
-**最小可行隔离（本地开发）：** 改 `SERVER_PORT`、`APP_NAME`、`POSTGRES_DATABASE`、`REDIS_DATABASE`、`JWT_SECRET`、`MONGODB_DATABASE`。
+另外建议改：`SERVER_PORT`（避免端口冲突）、`APP_NAME`、`JWT_SECRET`（与 template 不同）。
 
 ---
 
-## 2. 推荐配置示例
+## 2. 命名约定
 
-### 2.1 template（模板本体）
+项目名 `my-app` → 连字符换成下划线，库名 **`app_db_<项目名>`**：
 
-```env
-SPRING_PROFILES_ACTIVE=local
-SERVER_PORT=8080
-APP_NAME=template-server
+| 配置项 | 示例（项目 `my-app`） |
+|--------|----------------------|
+| `POSTGRES_DATABASE` | `app_db_my_app` |
+| `MYSQL_DATABASE` | `app_db_my_app` |
+| `MONGODB_DATABASE` | `app_db_my_app` |
+| `REDIS_DATABASE` | `1`（template 用 `0`，第二个项目用 `1`，以此类推） |
 
-POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5432
-POSTGRES_DATABASE=template_dev
-POSTGRES_USERNAME=devuser
-POSTGRES_PASSWORD="Dev@123456"
+### 2.1 一键建三库（推荐）
 
-MONGODB_HOST=127.0.0.1
-MONGODB_PORT=27017
-MONGODB_DATABASE=template_mongo
-MONGODB_USERNAME=admin
-MONGODB_PASSWORD="your-mongo-password"
-MONGODB_AUTH_DB=admin
+在 **local-db-stack** 或 **server-db-stack** 目录下（五库容器已运行）：
 
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DATABASE=0
-
-JWT_SECRET="template-请换成32字符以上随机串"
-JWT_ISSUER=template-server
-AUTH_TOKEN_REDIS_PREFIX=auth:token:template
-
-RABBITMQ_HOST=127.0.0.1
-RABBITMQ_PORT=5672
-RABBITMQ_USERNAME=guest
-RABBITMQ_PASSWORD=guest
-RABBITMQ_VHOST=/template
-
-LOG_MONGO_ENABLED=false
-# 若开启：
-# LOG_MONGO_DB=central_logs_template
+```bash
+./scripts/create-project-db.sh my-app
 ```
 
-### 2.2 ander（从模板 init 的新项目）
+会自动创建 `app_db_my_app`（PostgreSQL / MySQL / MongoDB），共用 `api_rw` 用户。  
+脚本结束会打印要在 `server/.env` 里填的配置项。
+
+---
+
+## 3. PostgreSQL（Docker）
+
+### 3.1 查容器名
+
+```bash
+docker ps | grep -i postgres
+```
+
+下面把 `dev-postgres` 换成你的容器名。
+
+### 3.2 方式 A：共用已有用户（推荐，最简单）
+
+本地已有 `devuser` 时，**只需新建一个空库**：
+
+```bash
+docker exec dev-postgres psql -U devuser -d postgres -c \
+  "CREATE DATABASE my_app_dev OWNER devuser;"
+```
+
+`.env`：
 
 ```env
-SPRING_PROFILES_ACTIVE=local
-SERVER_PORT=8081
-APP_NAME=ander-server
-
-POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5432
-POSTGRES_DATABASE=ander_dev
+POSTGRES_DATABASE=my_app_dev
 POSTGRES_USERNAME=devuser
-POSTGRES_PASSWORD="Dev@123456"
+POSTGRES_PASSWORD="与现有 devuser 密码一致"
+```
 
-MONGODB_HOST=127.0.0.1
-MONGODB_PORT=27017
-MONGODB_DATABASE=ander_mongo
-MONGODB_USERNAME=admin
-MONGODB_PASSWORD="your-mongo-password"
-MONGODB_AUTH_DB=admin
+启动后 Flyway 自动执行 `V1~V8` 建表，**无需手跑 SQL**。
 
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-REDIS_PASSWORD=
+### 3.3 方式 B：每项目独立用户（可选）
+
+需要完全隔离登录账号时使用（用超级用户进容器，常见为 `postgres` 或 `devuser`）：
+
+```bash
+# 1. 建用户
+docker exec dev-postgres psql -U postgres -d postgres -c \
+  "CREATE USER my_app WITH PASSWORD 'MyApp@123456';"
+
+# 2. 建库并指定 owner
+docker exec dev-postgres psql -U postgres -d postgres -c \
+  "CREATE DATABASE my_app_dev OWNER my_app;"
+
+# 3. 赋权（owner 已具备库内全部权限；若需显式授权可执行）
+docker exec dev-postgres psql -U postgres -d postgres -c \
+  "GRANT ALL PRIVILEGES ON DATABASE my_app_dev TO my_app;"
+```
+
+`.env`：
+
+```env
+POSTGRES_DATABASE=my_app_dev
+POSTGRES_USERNAME=my_app
+POSTGRES_PASSWORD="MyApp@123456"
+```
+
+### 3.4 重建空库（会删光该库数据）
+
+```bash
+docker exec dev-postgres psql -U devuser -d postgres -c "DROP DATABASE IF EXISTS my_app_dev;"
+docker exec dev-postgres psql -U devuser -d postgres -c "CREATE DATABASE my_app_dev OWNER devuser;"
+```
+
+---
+
+## 4. MongoDB
+
+**不用手动建库。** 在 `.env` 里改库名即可：
+
+```env
+MONGODB_DATABASE=my_app_mongo
+```
+
+应用第一次连 Mongo 写入数据时，库会自动出现。
+
+---
+
+## 5. Redis
+
+**不用建库。** 每个项目换一个 **DB 编号**（0~15）：
+
+```env
+REDIS_DATABASE=1
+```
+
+| 项目 | `REDIS_DATABASE` |
+|------|------------------|
+| template | 0 |
+| 第二个项目 | 1 |
+| 第三个项目 | 2 |
+
+---
+
+## 6. 新项目 `.env` 最小清单
+
+```env
+SERVER_PORT=8081
+APP_NAME=my-app-server
+
+POSTGRES_DATABASE=my_app_dev
+POSTGRES_USERNAME=devuser
+POSTGRES_PASSWORD="你的密码"
+
+MONGODB_DATABASE=my_app_mongo
+
 REDIS_DATABASE=1
 
-JWT_SECRET="ander-请换成与template不同的随机串"
-JWT_ISSUER=ander-server
-AUTH_TOKEN_REDIS_PREFIX=auth:token:ander
-
-RABBITMQ_HOST=127.0.0.1
-RABBITMQ_PORT=5672
-RABBITMQ_USERNAME=guest
-RABBITMQ_PASSWORD=guest
-RABBITMQ_VHOST=/ander
-
-LOG_MONGO_ENABLED=true
-LOG_MONGO_URI=mongodb://admin:your-mongo-password@127.0.0.1:27017/?authSource=admin
-LOG_MONGO_DB=central_logs_ander
-LOG_MONGO_COLLECTION=app_logs
-```
-
-### 2.3 第三个项目（示意）
-
-| 项目 | PORT | POSTGRES_DATABASE | REDIS_DATABASE | MONGODB_DATABASE |
-|------|------|-------------------|----------------|------------------|
-| template | 8080 | `template_dev` | 0 | `template_mongo` |
-| ander | 8081 | `ander_dev` | 1 | `ander_mongo` |
-| like-weixin | 8082 | `like_weixin_dev` | 2 | `like_weixin_mongo` |
-
----
-
-## 3. Docker：方案 A（推荐）共享中间件 + 配置隔离
-
-一台机器跑 **一套** PostgreSQL / Redis / MongoDB / RabbitMQ，通过 **不同库名 / DB index / vhost** 隔离各项目。资源占用小，适合日常开发。
-
-### 3.1 一键启动中间件（docker-compose）
-
-在任意目录（如 `~/dev-infra`）创建 `docker-compose.yml`：
-
-```yaml
-services:
-  postgres:
-    image: postgres:16
-    container_name: dev-postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: devuser
-      POSTGRES_PASSWORD: Dev@123456
-    volumes:
-      - dev_pg_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7
-    container_name: dev-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - dev_redis_data:/data
-
-  mongodb:
-    image: mongo:7
-    container_name: dev-mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: C2k9hxZw1yeFC2w
-    volumes:
-      - dev_mongo_data:/data/db
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: dev-rabbitmq
-    restart: unless-stopped
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    volumes:
-      - dev_rabbit_data:/var/lib/rabbitmq
-
-volumes:
-  dev_pg_data:
-  dev_redis_data:
-  dev_mongo_data:
-  dev_rabbit_data:
-```
-
-启动 / 停止：
-
-```bash
-cd ~/dev-infra
-docker compose up -d
-docker compose ps
-docker compose logs -f postgres   # 按需查看日志
-docker compose down               # 停止（数据在 volume 里保留）
-docker compose down -v            # 停止并清空数据（慎用）
-```
-
-### 3.2 为每个项目创建 PostgreSQL 库
-
-```bash
-# 进入 postgres 容器
-docker exec -it dev-postgres psql -U devuser -d postgres
-
-# 在 psql 里执行（每个项目一条 CREATE DATABASE）
-CREATE DATABASE template_dev OWNER devuser;
-CREATE DATABASE ander_dev OWNER devuser;
-CREATE DATABASE like_weixin_dev OWNER devuser;
-
-\q
-```
-
-或一条命令：
-
-```bash
-docker exec dev-postgres psql -U devuser -d postgres -c "CREATE DATABASE ander_dev OWNER devuser;"
-docker exec dev-postgres psql -U devuser -d postgres -c "CREATE DATABASE template_dev OWNER devuser;"
-```
-
-### 3.3 为每个项目创建 MongoDB 业务库（可选）
-
-Mongo 会在首次写入时自动建库；也可手动创建：
-
-```bash
-docker exec -it dev-mongodb mongosh -u admin -p 'C2k9hxZw1yeFC2w' --authenticationDatabase admin
-
-use template_mongo
-use ander_mongo
-use central_logs_template
-use central_logs_ander
-exit
-```
-
-### 3.4 为每个项目创建 RabbitMQ vhost（可选）
-
-管理台：`http://localhost:15672`（guest/guest）
-
-```bash
-docker exec dev-rabbitmq rabbitmqctl add_vhost /template
-docker exec dev-rabbitmq rabbitmqctl add_vhost /ander
-docker exec dev-rabbitmq rabbitmqctl set_permissions -p /template guest ".*" ".*" ".*"
-docker exec dev-rabbitmq rabbitmqctl set_permissions -p /ander guest ".*" ".*" ".*"
-```
-
-`.env` 中对应：
-
-```env
-RABBITMQ_VHOST=/template   # 或 /ander
+JWT_SECRET="用 openssl rand -base64 48 生成，勿与 template 相同"
 ```
 
 ---
 
-## 4. Docker：方案 B 完全独立中间件（每项目一套端口）
-
-若希望 **网络与数据完全隔离**（例如同时跑两套不同版本 PostgreSQL），可为每个项目单独起 compose，**映射不同宿主机端口**。
-
-### 4.1 ander 专用栈示例
-
-在 `ander/deploy/docker-compose.local.yml`（路径自定）：
-
-```yaml
-services:
-  postgres:
-    image: postgres:16
-    container_name: ander-postgres
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_USER: ander
-      POSTGRES_PASSWORD: Ander@123456
-      POSTGRES_DB: ander_dev
-
-  redis:
-    image: redis:7
-    container_name: ander-redis
-    ports:
-      - "6380:6379"
-
-  mongodb:
-    image: mongo:7
-    container_name: ander-mongodb
-    ports:
-      - "27018:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ander
-      MONGO_INITDB_ROOT_PASSWORD: AnderMongo@123
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: ander-rabbitmq
-    ports:
-      - "5673:5672"
-      - "15673:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-```
-
-启动：
+## 7. 启动
 
 ```bash
-docker compose -f deploy/docker-compose.local.yml up -d
-```
-
-对应 `ander/server/.env`：
-
-```env
-SERVER_PORT=8081
-POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5433
-POSTGRES_DATABASE=ander_dev
-POSTGRES_USERNAME=ander
-POSTGRES_PASSWORD="Ander@123456"
-
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6380
-REDIS_DATABASE=0
-
-MONGODB_HOST=127.0.0.1
-MONGODB_PORT=27018
-MONGODB_USERNAME=ander
-MONGODB_PASSWORD="AnderMongo@123"
-MONGODB_DATABASE=ander_mongo
-```
-
-template 仍用方案 A 的 `5432/6379/27017`，两者 **零冲突**。
-
----
-
-## 5. 新项目初始化 Checklist
-
-从模板 `new-project.sh` 生成新项目后，在 `server/.env` 中逐项确认：
-
-```text
-□ SERVER_PORT          → 与已有项目不重复
-□ APP_NAME             → {项目名}-server
-□ POSTGRES_DATABASE    → 新库名（先在 Postgres 里 CREATE DATABASE）
-□ REDIS_DATABASE       → 未占用的 0~15
-□ JWT_SECRET           → 新随机串（≥32 字符）
-□ MONGODB_DATABASE     → 新库名
-□ AUTH_TOKEN_REDIS_PREFIX → 建议带项目名
-□ RABBITMQ_VHOST       → 可选独立 vhost
-□ LOG_MONGO_DB         → 若开启中央日志，按项目区分
-□ FILE_LOCAL_DIR       → 若 FILE_STORAGE_TYPE=local，独立目录
-```
-
-生成 JWT 随机串（示例）：
-
-```bash
-openssl rand -base64 48
-```
-
----
-
-## 6. 启动方式（`.env` 生效前提）
-
-`spring-dotenv` 默认从 **进程工作目录** 读取 `.env`，请务必在 `server/` 下启动：
-
-```bash
-cd /path/to/your-project/server
+cd server
 mvn spring-boot:run
 ```
 
-或在 IDE 中将 **Working Directory** 设为 `{project}/server`。
-
-验证：
-
-```bash
-curl http://localhost:8081/actuator/health
-curl http://localhost:8081/api/v1/hello
-```
+必须在 **`server/` 目录**启动，`.env` 才会被正确加载。
 
 ---
 
-## 7. 常见问题
-
-### Q1：Flyway checksum mismatch
-
-**原因：** 两个项目用了同一个 `POSTGRES_DATABASE`，且迁移脚本版本不一致。
-
-**解决：** 为新项目使用 **空的新库**（见 §3.2），不要共用 `devdb`。
-
-### Q2：改了 `.env` 仍连旧库
-
-**原因：** 未在 `server/` 目录启动，`.env` 未加载。
-
-**解决：** `cd server && mvn spring-boot:run`。
-
-### Q3：端口被占用
+## 8. 示例：ander
 
 ```bash
-lsof -i :8081
-kill <PID>
-```
-
-或改 `SERVER_PORT`。
-
-### Q4：想清空某项目数据重来
-
-```bash
-# 仅删 ander 的库（PostgreSQL）
-docker exec dev-postgres psql -U devuser -d postgres -c "DROP DATABASE IF EXISTS ander_dev;"
 docker exec dev-postgres psql -U devuser -d postgres -c "CREATE DATABASE ander_dev OWNER devuser;"
 ```
 
-重启应用后 Flyway 会重新迁移。
-
----
-
-## 8. 快速对照：template vs ander
-
-| 配置 | template | ander |
-|------|----------|-------|
-| `SERVER_PORT` | 8080 | 8081 |
-| `APP_NAME` | template-server | ander-server |
-| `POSTGRES_DATABASE` | template_dev | ander_dev |
-| `REDIS_DATABASE` | 0 | 1 |
-| `MONGODB_DATABASE` | template_mongo | ander_mongo |
-| `JWT_SECRET` | （独立随机串 A） | （独立随机串 B） |
-| `RABBITMQ_VHOST` | /template | /ander |
-| `LOG_MONGO_DB` | central_logs_template | central_logs_ander |
-
----
-
-## 9. 相关文档
-
-- [DB/MIGRATIONS.md](../DB/MIGRATIONS.md) — Flyway 与 baseline
-- [server/README.md](../../server/README.md) — 后端启动说明
-- [server/.env.example](../../server/.env.example) — 环境变量模板
+```env
+SERVER_PORT=8081
+APP_NAME=ander-server
+POSTGRES_DATABASE=ander_dev
+MONGODB_DATABASE=ander_mongo
+REDIS_DATABASE=1
+```
